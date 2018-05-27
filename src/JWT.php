@@ -71,67 +71,101 @@ class JWT
         $timestamp = is_null(static::$timestamp) ? time() : static::$timestamp;
 
         if (empty($key)) {
-            throw new InvalidArgumentException('Key may not be empty');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Key may not be empty'}";
+            return ;
         }
         $tks = explode('.', $jwt);
         if (count($tks) != 3) {
-            throw new UnexpectedValueException('Wrong number of segments');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Wrong number of segments'}";
+            return ;
         }
         list($headb64, $bodyb64, $cryptob64) = $tks;
         if (null === ($header = static::jsonDecode(static::urlsafeB64Decode($headb64)))) {
-            return null ;//throw new UnexpectedValueException('Invalid header encoding');
+            
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Invalid header encoding'}";
+            return ;
+
         }
         if (null === $payload = static::jsonDecode(static::urlsafeB64Decode($bodyb64))) {
-            throw new UnexpectedValueException('Invalid claims encoding');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Invalid claims encoding'}";
+            return ;
         }
         if (false === ($sig = static::urlsafeB64Decode($cryptob64))) {
-            throw new UnexpectedValueException('Invalid signature encoding');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Invalid signature encoding'}";
+            return ;
+
         }
         if (empty($header->alg)) {
-            throw new UnexpectedValueException('Empty algorithm');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Empty algorithm'}";
+            return ;
+
         }
         if (empty(static::$supported_algs[$header->alg])) {
-            throw new UnexpectedValueException('Algorithm not supported');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Algorithm not supported'}";
+            return ;
         }
         if (!in_array($header->alg, $allowed_algs)) {
-            throw new UnexpectedValueException('Algorithm not allowed');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Algorithm not allowed'}";
+            return ;
+
         }
         if (is_array($key) || $key instanceof \ArrayAccess) {
             if (isset($header->kid)) {
                 if (!isset($key[$header->kid])) {
-                    throw new UnexpectedValueException('"kid" invalid, unable to lookup correct key');
+
+                    header("HTTP/1.1 401 Unauthorized");
+                    echo "{succes:false, message: 'kid invalid, unable to lookup correct key'}";
+                    return ;
+                    
                 }
                 $key = $key[$header->kid];
             } else {
-                throw new UnexpectedValueException('"kid" empty, unable to lookup correct key');
+
+                header("HTTP/1.1 401 Unauthorized");
+                echo "{succes:false, message: 'kid empty, unable to lookup correct key'}";
+                return ;
+    
             }
         }
 
         // Check the signature
         if (!static::verify("$headb64.$bodyb64", $sig, $key, $header->alg)) {
-            throw new SignatureInvalidException('Signature verification failed');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Signature verification failed'}";
+            return ;
         }
 
         // Check if the nbf if it is defined. This is the time that the
         // token can actually be used. If it's not yet that time, abort.
         if (isset($payload->nbf) && $payload->nbf > ($timestamp + static::$leeway)) {
-            throw new BeforeValidException(
-                'Cannot handle token prior to ' . date(DateTime::ISO8601, $payload->nbf)
-            );
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: '" . 'Cannot handle token prior to ' . date(DateTime::ISO8601, $payload->nbf) . "'}";
+            return ;
         }
 
         // Check that this token has been created before 'now'. This prevents
         // using tokens that have been created for later use (and haven't
         // correctly used the nbf claim).
         if (isset($payload->iat) && $payload->iat > ($timestamp + static::$leeway)) {
-            throw new BeforeValidException(
-                'Cannot handle token prior to ' . date(DateTime::ISO8601, $payload->iat)
-            );
+
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: '" . 'Cannot handle token prior to ' . date(DateTime::ISO8601, $payload->iat) . "'}";
+            return ;
         }
 
         // Check if this token has expired.
         if (isset($payload->exp) && ($timestamp - static::$leeway) >= $payload->exp) {
-            throw new ExpiredException('Expired token');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Expired token'}";
+            return ;
         }
 
         return $payload;
@@ -285,7 +319,9 @@ class JWT
         if (function_exists('json_last_error') && $errno = json_last_error()) {
             static::handleJsonError($errno);
         } elseif ($obj === null && $input !== 'null') {
-            throw new DomainException('Null result with non-null input');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Null result with non-null input'}";
+            return;
         }
         return $obj;
     }
@@ -305,7 +341,9 @@ class JWT
         if (function_exists('json_last_error') && $errno = json_last_error()) {
             static::handleJsonError($errno);
         } elseif ($json === 'null' && $input !== null) {
-            throw new DomainException('Null result with non-null input');
+            header("HTTP/1.1 401 Unauthorized");
+            echo "{succes:false, message: 'Null result with non-null input'}";
+            return ;
         }
         return $json;
     }
@@ -355,11 +393,10 @@ class JWT
             JSON_ERROR_SYNTAX => 'Syntax error, malformed JSON',
             JSON_ERROR_UTF8 => 'Malformed UTF-8 characters' //PHP >= 5.3.3
         );
-        throw new DomainException(
-            isset($messages[$errno])
-            ? $messages[$errno]
-            : 'Unknown JSON error: ' . $errno
-        );
+
+        //header("HTTP/1.1 401 Unauthorized");
+        //echo "{succes:false, message: '$messages[$errno]'}";
+        //return ;
     }
 
     /**
